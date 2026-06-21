@@ -1,0 +1,79 @@
+services:
+  zookeeper:
+    image: wurstmeister/zookeeper:latest
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+
+  kafka-broker-1:
+    image: wurstmeister/kafka:latest
+    container_name: kafka-broker-1
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://192.168.0.16:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 2
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  kafka-broker-2:
+    image: wurstmeister/kafka:latest
+    container_name: kafka-broker-2
+    depends_on:
+      - zookeeper
+    ports:
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://192.168.0.16:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 2
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  init-kafka:
+    image: wurstmeister/kafka:latest
+    depends_on:
+      - kafka-broker-1
+      - kafka-broker-2
+    entrypoint: ['/bin/sh', '-c']
+    command: |
+      "
+      sleep 20
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server 192.168.0.16:9092,192.168.0.16:9093 --create --if-not-exists --topic raw-data --partitions 3 --replication-factor 2 --config min.insync.replicas=2
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server 192.168.0.16:9092,192.168.0.16:9093 --create --if-not-exists --topic processed-data --partitions 3 --replication-factor 2 --config min.insync.replicas=2
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server 192.168.0.16:9092,192.168.0.16:9093 --create --if-not-exists --topic ml-results --partitions 3 --replication-factor 2 --config min.insync.replicas=2
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server 192.168.0.16:9092,192.168.0.16:9093 --create --if-not-exists --topic visualization-data --partitions 3 --replication-factor 2 --config min.insync.replicas=2
+      echo "All topics created"
+      "
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka-broker-1
+      - kafka-broker-2
+    ports:
+      - "8080:8080"
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=192.168.0.16:9092,192.168.0.16:9093
+      - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
